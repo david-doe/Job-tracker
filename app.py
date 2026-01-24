@@ -50,8 +50,7 @@ if action == "Ajouter une candidature":
     if submit_button:
         if company and role:
             # Ordre des colonnes : Date, Entreprise, Poste, Lien_Offre, Statut, Date_Relance, Commentaires
-            new_row = [str(today), company, role, link, status, str(relance_date), comments]
-            sheet.append_row(new_row)
+            new_row = [str(today), company, city, role, link, status, str(relance_date), comments]
             st.sidebar.success(f"Candidature {company} ajoutée !")
             st.rerun()
         else:

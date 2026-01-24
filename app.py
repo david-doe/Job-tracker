@@ -122,10 +122,14 @@ if not df.empty:
     col2.metric("Entretiens", nb_entretiens)
     
     # Alertes Relance
-    df['Date_Relance'] = pd.to_datetime(df['Date_Relance'], errors='coerce').dt.date
-    today_date = date.today()
-    to_contact = df[(df['Date_Relance'] <= today_date) & (~df['Statut'].isin(['Refus', 'Abandon']))]
-    col3.metric("Relances à faire", len(to_contact), delta_color="inverse")
+   # 1. On convertit la colonne avec Pandas
+    df['Date_Relance'] = pd.to_datetime(df['Date_Relance'], errors='coerce')
+    
+    # 2. On crée la date du jour avec Pandas aussi (le .normalize() met l'heure à minuit pile)
+    today_timestamp = pd.to_datetime("today").normalize()
+    
+    # 3. On utilise 'today_timestamp' pour la comparaison
+    to_contact = df[(df['Date_Relance'] <= today_timestamp) & (~df['Statut'].isin(['Refus', 'Abandon']))]
 
     st.markdown("---")
     

@@ -36,6 +36,7 @@ if action == "Ajouter une candidature":
     st.sidebar.subheader("Nouvelle Entrée")
     with st.sidebar.form(key='add_job_form'):
         company = st.text_input("Entreprise")
+        city = st.text_input("Ville / Localisation")
         location = st.text_input("Ville / Localisation")
         role = st.text_input("Poste")
         link = st.text_input("Lien")

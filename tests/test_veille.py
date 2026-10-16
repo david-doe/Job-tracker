@@ -300,3 +300,19 @@ def test_identifiants_gmail_robustes():
     assert identifiants_gmail({"GMAIL_ADDRESS": "moi@gmail.com", "GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop"}) == ok
     assert identifiants_gmail({"GMAIL_ADDRESS": "abcd efgh ijkl mnop", "GMAIL_APP_PASSWORD": "moi@gmail.com"}) == ok
     assert identifiants_gmail({"GMAIL_ADDRESS": "David <moi@gmail.com>\n", "GMAIL_APP_PASSWORD": " abcdefghijklmnop "}) == ok
+
+
+def test_postule_approche_et_type():
+    import pandas as pd
+    from veille import Offre, choisir_type, cles_deja_postulees, evaluer
+    from datetime import date
+    cand = pd.DataFrame([{"Date": "2026-10-06", "Entreprise": "Heineken", "Poste": "Data Analyst"}])
+    o = Offre(source="Adzuna", titre="Stage - Data analyst H/F - Rueil Malmaison (92)", entreprise="Heineken",
+              lieu="Rueil", url="u", date_publication=date(2026, 10, 14), description="Stage de 6 mois en data.")
+    evaluer(o, date(2026, 10, 16), cles_deja_postulees(cand))
+    assert not o.ecartee and any("déjà postulé" in r for r in o.raisons_moins)
+    t = Offre(source="Adzuna", titre="Stage de Fin d'Études - Consultant Data App & Automation H/F",
+              entreprise="Talan", lieu="Paris", url="u", description="Rejoins notre cabinet de conseil.")
+    assert choisir_type(t) == "conseil"
+    g = Offre(source="Adzuna", titre="Stage de fin d'études - Data H/F", entreprise="X", lieu="Paris", url="u")
+    assert choisir_type(g) == "generique"

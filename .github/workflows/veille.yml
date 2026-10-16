@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "23 5 * * *"   # chaque matin vers 7 h 20 (heure de Paris en été, 6 h 20 en hiver)
   workflow_dispatch:
+    inputs:
+      renoter:
+        description: "Renoter les offres pas encore traitées"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,4 +37,5 @@ jobs:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VEILLE_RENOTER: ${{ inputs.renoter }}
         run: python veille_run.py

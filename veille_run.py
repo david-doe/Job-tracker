@@ -52,6 +52,19 @@ class OffresSheet:
         if offres:
             self.ws.append_rows([ligne(o, aujourd_hui) for o in offres], value_input_option="RAW")
 
+    def oublier_nouvelles(self) -> int:
+        """Retire les offres encore au statut « Nouvelle » (pour les renoter). Les autres restent."""
+        valeurs = self.ws.get_all_values()
+        if len(valeurs) < 2:
+            return 0
+        i = valeurs[0].index("Statut")
+        garder = [valeurs[0]] + [l for l in valeurs[1:] if len(l) > i and l[i] != "Nouvelle"]
+        retirees = len(valeurs) - len(garder)
+        if retirees:
+            self.ws.clear()
+            self.ws.update(garder, "A1", value_input_option="RAW")
+        return retirees
+
     def statut(self, cle: str, statut: str) -> None:
         cellule = self.ws.find(cle, in_column=1)
         if cellule:
@@ -101,6 +114,7 @@ def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
     import requests
 
     relues = 0
+    relire_avec_ia.erreur = ""
     url = ("https://generativelanguage.googleapis.com/v1beta/models/"
            f"{os.environ.get('GEMINI_MODEL', 'gemini-flash-latest')}:generateContent")
     for o in sorted(offres, key=lambda x: -x.score)[:nombre]:
@@ -123,7 +137,8 @@ def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
             o.score = max(5, min(95, o.score + ajustement))
             o.avis_ia = str(avis.get("avis", ""))[:300]
             relues += 1
-        except Exception:
+        except Exception as e:
+            relire_avec_ia.erreur = relire_avec_ia.erreur or resume_erreur(e)
             continue
     return relues
 
@@ -209,6 +224,7 @@ class Bilan:
     fraiches: int = 0
     nouvelles: list = field(default_factory=list)
     ecartees: dict = field(default_factory=dict)
+    ia: str = ""
 
 
 def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None = None,
@@ -239,7 +255,8 @@ def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None 
     connues = offres_sheet.cles()
     nouvelles = [o for o in gardees if o.cle not in connues]
     if cle_ia:
-        relire_avec_ia(nouvelles, cle_ia)
+        n = relire_avec_ia(nouvelles, cle_ia)
+        bilan.ia = f"{n} relues" + (f", erreur {relire_avec_ia.erreur}" if relire_avec_ia.erreur else "")
     nouvelles.sort(key=lambda o: (-o.score, o.age_jours if o.age_jours is not None else 99))
     offres_sheet.ajouter(nouvelles, aujourd_hui)
     bilan.nouvelles = nouvelles
@@ -322,7 +339,10 @@ def main() -> int:
         creds = ServiceAccountCredentials.from_json_keyfile_dict(compte, scope)
         classeur = gspread.authorize(creds).open(env.get("SHEET_NAME") or "Job_Tracker_Data")
         candidatures = SheetStore(classeur.worksheet("Candidatures")).charger()
-        bilan = executer(sources, OffresSheet(classeur), candidatures, cle_ia=env.get("GEMINI_API_KEY", ""))
+        feuille = OffresSheet(classeur)
+        if env.get("VEILLE_RENOTER") == "true":
+            print(f"Offres non traitées retirées pour être renotées : {feuille.oublier_nouvelles()}")
+        bilan = executer(sources, feuille, candidatures, cle_ia=env.get("GEMINI_API_KEY", ""))
     except Exception as e:                          # message générique : les journaux sont publics
         print(f"Échec de la veille ({type(e).__name__}).")
         return 1
@@ -331,6 +351,8 @@ def main() -> int:
     if bilan.erreurs:
         print("Sources en erreur : " + ", ".join(f"{k} ({v})" for k, v in bilan.erreurs.items()))
     print(f"Collectées {bilan.collectees} · retenues {bilan.fraiches} · nouvelles {len(bilan.nouvelles)}")
+    if bilan.ia:
+        print(f"Relecture IA : {bilan.ia}")
     print("Écartées : " + ", ".join(f"{k} {v}" for k, v in sorted(bilan.ecartees.items())))
 
     a_envoyer = [o for o in bilan.nouvelles if o.score >= SCORE_MAIL and o.date_publication is not None]

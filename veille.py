@@ -98,7 +98,7 @@ DOMAINES = {
                         "data management", "catalogue", "anomalies", "nettoyage"],
     "service_public": ["service public", "collectivite", "energie", "mobilite", "frequentation", "usagers",
                        "ferroviaire", "metropole", "territoire", "voyageurs", "politique publique"],
-    "etudes_economiques": ["etudes", "econom", "conjoncture", "enquete", "sondage", "barometre", "panel",
+    "etudes_economiques": ["etudes eco", "etudes stat", "charge d'etudes", "charge etudes", "econom", "conjoncture", "enquete", "sondage", "barometre", "panel",
                            "statistique publique", "insee", "banque centrale", "prix", "inflation"],
     "banque_finance": ["banque", "bancaire", "assurance", "credit", "risque", "financ", "fraude", "actuariat",
                        "mutuelle", "solvabilite", "bale", "epargne"],
@@ -217,6 +217,14 @@ def evaluer(offre: Offre, aujourd_hui: date | None = None, deja_postule: set[str
     elif deja_postule and offre.cle in deja_postule:
         offre.ecartee = "Déjà postulé"
 
+    proche = deja_postule.proche(offre) if isinstance(deja_postule, Postulees) and not offre.ecartee else None
+    if proche:
+        score -= 20
+        moins.append(f"Tu as peut-être déjà postulé : {proche}")
+    if re.search(r"talents? handicap|hanploi|agefiph", norm(f"{offre.entreprise} {offre.titre}")):
+        score -= 15
+        moins.append("Publiée via un forum de recrutement dédié aux candidats en situation de handicap")
+
     # --- Métier ------------------------------------------------------------
     if TITRE_BON.search(titre_n):
         score += 12
@@ -315,12 +323,49 @@ def dedoublonner(offres: list[Offre]) -> list[Offre]:
     return list(meilleures.values())
 
 
-def cles_deja_postulees(candidatures) -> set[str]:
-    """Clés des candidatures déjà saisies (DataFrame avec Entreprise et Poste)."""
+_MOTS_VIDES = set("stage stagiaire internship intern h f x m de du des la le les et en d l a au aux pour "
+                  "fin etudes etude alternance alternant".split())
+
+
+def _mots_titre(titre: str) -> set[str]:
+    return {m for m in re.sub(r"[^a-z0-9]+", " ", norm(titre)).split() if m not in _MOTS_VIDES and len(m) > 1}
+
+
+def _societe(nom: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\b(groupe|group|sa|sas|france)\b", " ", norm(nom)))
+
+
+class Postulees(set):
+    """Clés exactes des candidatures, plus une recherche approchée (même société, intitulé voisin)."""
+
+    def __init__(self, cles=(), fiches=()):
+        super().__init__(cles)
+        self.fiches = list(fiches)              # (société simplifiée, mots du titre, libellé)
+
+    def proche(self, offre: Offre) -> str | None:
+        soc, mots = _societe(offre.entreprise), _mots_titre(offre.titre)
+        if len(soc) < 3 or not mots:
+            return None
+        for s, m, libelle in self.fiches:
+            if len(s) < 3 or not (s.startswith(soc) or soc.startswith(s)):
+                continue
+            commun = len(m & mots)
+            if commun >= 2 and commun / min(len(m), len(mots)) >= 0.8:
+                return libelle
+        return None
+
+
+def cles_deja_postulees(candidatures) -> Postulees:
+    """Candidatures déjà saisies (DataFrame avec Entreprise, Poste et Date)."""
     if candidatures is None or len(candidatures) == 0:
-        return set()
-    return {Offre(source="", titre=str(r.get("Poste", "")), entreprise=str(r.get("Entreprise", ""))).cle
-            for _, r in candidatures.iterrows()}
+        return Postulees()
+    cles, fiches = [], []
+    for _, r in candidatures.iterrows():
+        ent, poste = str(r.get("Entreprise", "")).strip(), str(r.get("Poste", "")).strip()
+        cles.append(Offre(source="", titre=poste, entreprise=ent).cle)
+        quand = str(r.get("Date", "") or "")[:10]
+        fiches.append((_societe(ent), _mots_titre(poste), f"{ent}, {poste}" + (f" le {quand}" if quand else "")))
+    return Postulees(cles, fiches)
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +378,8 @@ def choisir_type(offre: Offre) -> str:
     for k, mots in DOMAINES.items():          # un mot du titre compte double
         scores[k] += sum(1 for m in mots if m in titre)
     meilleur = max(scores, key=scores.get)
-    return meilleur if scores[meilleur] > 0 else "generique"
+    # un seul indice dans un texte court (annonce tronquée) ne suffit pas
+    return meilleur if scores[meilleur] >= 2 else "generique"
 
 
 def choisir_mots_cles(offre: Offre, type_cv: str, max_car: int = 60) -> str:

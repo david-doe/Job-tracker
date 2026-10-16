@@ -1,0 +1,5 @@
+streamlit>=1.40
+pandas
+gspread>=5.12
+oauth2client
+anthropic

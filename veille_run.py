@@ -111,14 +111,18 @@ PROFIL_IA = (
 
 def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
     """Ajuste le score des meilleures offres (±15) avec Gemini. Renvoie le nombre d'offres relues."""
+    import time
+
     import requests
 
     relues = 0
     relire_avec_ia.erreur = ""
-    url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{os.environ.get('GEMINI_MODEL', 'gemini-flash-latest')}:generateContent")
+    modeles = [m for m in [os.environ.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-2.5-flash",
+                           "gemini-flash-lite-latest", "gemini-2.5-flash-lite"] if m]
+    modeles = list(dict.fromkeys(modeles))
+    echecs_suivis = 0
     for o in sorted(offres, key=lambda x: -x.score)[:nombre]:
-        if len(o.description) < 150:
+        if len(o.description) < 150 or echecs_suivis >= 4:
             continue
         consigne = (
             f"Profil du candidat : {PROFIL_IA}\n\nOffre : {o.titre} chez {o.entreprise} ({o.lieu}).\n"
@@ -126,20 +130,29 @@ def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
             'Réponds uniquement en JSON : {"ajustement": entier entre -15 et 15, '
             '"avis": "une phrase en français, sans formule"}'
         )
-        try:
-            r = requests.post(url, params={"key": cle_api}, timeout=40, json={
-                "contents": [{"parts": [{"text": consigne}]}],
-                "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}})
-            r.raise_for_status()
-            texte = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            avis = json.loads(texte)
-            ajustement = max(-15, min(15, int(avis.get("ajustement", 0))))
-            o.score = max(5, min(95, o.score + ajustement))
-            o.avis_ia = str(avis.get("avis", ""))[:300]
-            relues += 1
-        except Exception as e:
-            relire_avec_ia.erreur = relire_avec_ia.erreur or resume_erreur(e)
-            continue
+        for modele in list(modeles):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modele}:generateContent"
+            try:
+                r = requests.post(url, params={"key": cle_api}, timeout=40, json={
+                    "contents": [{"parts": [{"text": consigne}]}],
+                    "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}})
+                if r.status_code in (429, 500, 503):          # modèle saturé : on essaie le suivant
+                    time.sleep(1)
+                r.raise_for_status()
+                texte = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                avis = json.loads(texte)
+                ajustement = max(-15, min(15, int(avis.get("ajustement", 0))))
+                o.score = max(5, min(95, o.score + ajustement))
+                o.avis_ia = str(avis.get("avis", ""))[:300]
+                relues += 1
+                echecs_suivis = 0
+                modeles.remove(modele)
+                modeles.insert(0, modele)                    # on garde le modèle qui répond
+                break
+            except Exception as e:
+                relire_avec_ia.erreur = relire_avec_ia.erreur or resume_erreur(e)
+        else:
+            echecs_suivis += 1
     return relues
 
 

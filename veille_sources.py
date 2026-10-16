@@ -222,7 +222,7 @@ class AlertesGmail:
 
     def messages(self, jours: int):
         with imaplib.IMAP4_SSL(self.hote) as imap:
-            imap.login(self.adresse, self.mot_de_passe)
+            imap.login(self.adresse.strip(), self.mot_de_passe.replace(" ", "").strip())
             _, dossiers = imap.list()
             tous = next((l.decode(errors="replace").split(' "/" ')[-1].strip()
                          for l in dossiers or [] if b"\\All" in l), "INBOX")

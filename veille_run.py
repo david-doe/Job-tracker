@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import os
 import sys
 from dataclasses import dataclass, field
@@ -184,6 +185,16 @@ def envoyer_mail(adresse: str, mot_de_passe: str, destinataire: str, objet: str,
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
+def resume_erreur(e: Exception) -> str:
+    """Cause courte et sans secret (pas d'URL : celle d'Adzuna porte la clé)."""
+    reponse = getattr(e, "response", None)
+    if reponse is not None and getattr(reponse, "status_code", None):
+        etape = "jeton" if "oauth2" in str(getattr(reponse, "url", "")) else "recherche"
+        return f"{type(e).__name__} {reponse.status_code} {etape}"
+    message = re.sub(r"\S+@\S+", "", str(e))[:80].strip(" b'\"")
+    return f"{type(e).__name__}: {message}" if message else type(e).__name__
+
+
 @dataclass
 class Bilan:
     par_source: dict = field(default_factory=dict)
@@ -206,7 +217,7 @@ def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None 
             bilan.par_source[nom] = len(lot)
             toutes += lot
         except Exception as e:                      # une source en panne ne bloque pas les autres
-            bilan.erreurs[nom] = type(e).__name__
+            bilan.erreurs[nom] = resume_erreur(e)
     bilan.collectees = len(toutes)
 
     deja = cles_deja_postulees(candidatures)
@@ -314,7 +325,7 @@ def main() -> int:
                          env.get("VEILLE_MAIL_A") or env["GMAIL_ADDRESS"], objet, texte, corps)
             print(f"Mail envoyé ({len(a_envoyer[:NB_MAIL])} offres).")
         except Exception as e:
-            print(f"Mail non envoyé ({type(e).__name__}).")
+            print(f"Mail non envoyé ({resume_erreur(e)}).")
     return 0
 
 

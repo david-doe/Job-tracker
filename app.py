@@ -785,6 +785,7 @@ def page_offres():
                 g.caption("✖ " + str(o["Points_faibles"]).replace(" · ", " · ✖ "))
             if o.get("Avis_IA"):
                 g.caption(f"Avis IA : {o['Avis_IA']}")
+            from veille import entreprise_cv, titre_cv
             nom, contenu = lanceur_depuis_ligne(o.to_dict())
             d.download_button("Lanceur CV", contenu, file_name=nom, mime="text/x-python",
                               key=f"cv_{o['Cle']}", use_container_width=True)
@@ -792,8 +793,8 @@ def page_offres():
             if b1.button("Postulé", key=f"ok_{o['Cle']}", use_container_width=True):
                 try:
                     store.ajouter({
-                        "Date": date.today().isoformat(), "Entreprise": o["Entreprise"], "Ville": o["Lieu"],
-                        "Poste": o["Titre"], "Lien_Offre": o["Lien"], "Statut": "Candidature envoyée",
+                        "Date": date.today().isoformat(), "Entreprise": entreprise_cv(o["Entreprise"]),
+                        "Ville": o["Lieu"], "Poste": titre_cv(o["Titre"]), "Lien_Offre": o["Lien"], "Statut": "Candidature envoyée",
                         "Date_Relance": (date.today() + timedelta(days=7)).isoformat(),
                         "Commentaires": f"Trouvée par la veille ({o['Source']}, score {o['Score']})",
                         "Nb_Relances": 0,

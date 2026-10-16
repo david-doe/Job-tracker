@@ -438,6 +438,35 @@ def entreprise_cv(nom: str) -> str:
     return re.sub(r"[A-Za-zÀ-ÿ]+", mot, (nom or "").strip())
 
 
+REGIONS_DEPTS = set(norm(x) for x in """France|Ile-de-France|Île-de-France|Auvergne-Rhône-Alpes|Hauts-de-France|Grand Est|
+Normandie|Bretagne|Pays de la Loire|Centre-Val de Loire|Bourgogne-Franche-Comté|Nouvelle-Aquitaine|Occitanie|
+Provence-Alpes-Côte d'Azur|Corse|Ain|Aisne|Allier|Alpes-de-Haute-Provence|Hautes-Alpes|Alpes-Maritimes|Ardèche|Ardennes|
+Ariège|Aube|Aude|Aveyron|Bouches-du-Rhône|Calvados|Cantal|Charente|Charente-Maritime|Cher|Corrèze|Côte-d'Or|
+Côtes-d'Armor|Creuse|Dordogne|Doubs|Drôme|Eure|Eure-et-Loir|Finistère|Gard|Haute-Garonne|Gers|Gironde|Hérault|
+Ille-et-Vilaine|Indre|Indre-et-Loire|Isère|Jura|Landes|Loir-et-Cher|Loire|Haute-Loire|Loire-Atlantique|Loiret|Lot|
+Lot-et-Garonne|Lozère|Maine-et-Loire|Manche|Marne|Haute-Marne|Mayenne|Meurthe-et-Moselle|Meuse|Morbihan|Moselle|
+Nièvre|Nord|Oise|Orne|Pas-de-Calais|Puy-de-Dôme|Pyrénées-Atlantiques|Hautes-Pyrénées|Pyrénées-Orientales|Bas-Rhin|
+Haut-Rhin|Rhône|Haute-Saône|Saône-et-Loire|Sarthe|Savoie|Haute-Savoie|Seine-Maritime|Seine-et-Marne|Yvelines|
+Deux-Sèvres|Somme|Tarn|Tarn-et-Garonne|Var|Vaucluse|Vendée|Vienne|Haute-Vienne|Vosges|Yonne|Territoire de Belfort|
+Essonne|Hauts-de-Seine|Seine-Saint-Denis|Val-de-Marne|Val-d'Oise|Télétravail|Remote|Hybride""".replace("\n", "").split("|"))
+
+
+def ville_cv(lieu: str, *textes: str) -> str:
+    """Ville lisible : « Champagne-au-Mont-d'Or, Lyon » → « Champagne-au-Mont-d'Or » ;
+    « 2ème Arrondissement, Paris » → « Paris » ; « France » → ville citée dans le titre/l'annonce, sinon ""."""
+    morceaux = [m.strip() for m in re.split(r"[,;|]", lieu or "") if m.strip()]
+    for m in morceaux:
+        m = re.sub(r"\s*\(\d{2,3}\)\s*$", "", m).strip()
+        if re.search(r"(?i)arrondissement", m) or norm(m) in REGIONS_DEPTS:
+            continue
+        return m.title() if m.isupper() else m
+    for t in textes:
+        r = re.search(r"\b([A-ZÉÈ][\w'’-]+(?:[ -](?:[A-ZÉÈ][\w'’-]+|sur|sous|en|le|la|les|de|du)){0,4})\s*\((\d{2}|\d{3}|\d{5})\)", t or "")
+        if r and norm(r.group(1)) not in REGIONS_DEPTS:
+            return r.group(1).replace("-", "-")
+    return ""
+
+
 def titre_cv(titre: str) -> str:
     t = re.sub(r"\s*[\(\[]?\b(H/F|F/H|H/F/X|F/H/X|M/F|F/M|X/F/H)\b[\)\]]?", "", titre, flags=re.I)
     t = re.sub(r"\s*[-–|]\s*(r[ée]f\.?|ref)\s*[\w-]+$", "", t, flags=re.I)

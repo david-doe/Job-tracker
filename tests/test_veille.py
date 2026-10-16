@@ -347,3 +347,13 @@ def test_lanceur_depuis_ligne_casse():
                                    "Type_CV": "pilotage", "Mots_cles": "Power BI · DAX"})
     assert "ENTREPRISE = 'Emotors'" in c and "TITRE = 'Stage Data Analyst Power BI & DAX'" in c
     assert nom == "cv_offre_Emotors.py"
+
+
+def test_ville_propre():
+    from veille import ville_cv
+    assert ville_cv("France", "Stage data analyst") == ""
+    assert ville_cv("2ème Arrondissement, Paris") == "Paris"
+    assert ville_cv("Champagne-au-Mont-d'Or, Lyon") == "Champagne-au-Mont-d'Or"
+    assert ville_cv("Hauts-de-Seine, Ile-de-France") == ""
+    assert ville_cv("RUEIL-MALMAISON (92)") == "Rueil-Malmaison"
+    assert ville_cv("France", "Stage - Data analyst H/F - Rueil Malmaison (92)") == "Rueil Malmaison"

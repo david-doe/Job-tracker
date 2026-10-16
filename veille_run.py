@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from veille import NB_MAIL, SCORE_MAIL, Offre, choisir_mots_cles, choisir_type, cles_deja_postulees, dedoublonner, \
-    evaluer
+    evaluer, ville_cv
 
 ENTETES = ["Cle", "Detectee_le", "Publiee_le", "Score", "Chances", "Titre", "Entreprise", "Lieu", "Contrat",
            "Source", "Lien", "Points_forts", "Points_faibles", "Outils_manquants", "Type_CV", "Mots_cles",
@@ -97,7 +97,8 @@ class OffresMemoire(OffresSheet):
 def ligne(o: Offre, aujourd_hui: date) -> list[str]:
     type_cv = choisir_type(o)
     return [o.cle, aujourd_hui.isoformat(), o.date_publication.isoformat() if o.date_publication else "",
-            str(o.score), o.chances, o.titre, o.entreprise, o.lieu, o.contrat, o.source, o.url,
+            str(o.score), o.chances, o.titre, o.entreprise, ville_cv(o.lieu, o.titre, o.description),
+            o.contrat, o.source, o.url,
             " · ".join(o.raisons_plus), " · ".join(o.raisons_moins), ", ".join(o.outils_manquants),
             type_cv, choisir_mots_cles(o, type_cv), o.avis_ia, "Nouvelle"]
 

@@ -229,7 +229,7 @@ with st.sidebar:
         st.caption("Mode démo : données fictives")
     page = st.radio(
         "Navigation",
-        ["Tableau de bord", f"Relances ({len(dues)})", "Candidatures", "Analyse des refus"],
+        ["Tableau de bord", "Offres du jour", f"Relances ({len(dues)})", "Candidatures", "Analyse des refus"],
         label_visibility="collapsed",
     )
     st.divider()
@@ -682,8 +682,141 @@ def page_analyse():
         )
 
 
+# ---------------------------------------------------------------------------
+# Page : offres du jour (veille)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=300, show_spinner=False)
+def offres_du_sheet() -> pd.DataFrame:
+    from veille_run import OffresSheet
+
+    return pd.DataFrame(OffresSheet(get_classeur()).lignes())
+
+
+def lancer_veille_ici():
+    """Lance la veille depuis l'app avec les secrets Streamlit (même traitement que la tâche du matin)."""
+    from veille_run import OffresSheet, executer, sources_depuis_env
+
+    env = {
+        "FT_CLIENT_ID": secret("veille.ft_client_id", ""), "FT_CLIENT_SECRET": secret("veille.ft_client_secret", ""),
+        "ADZUNA_APP_ID": secret("veille.adzuna_app_id", ""), "ADZUNA_APP_KEY": secret("veille.adzuna_app_key", ""),
+        "GMAIL_ADDRESS": secret("gmail.address", ""), "GMAIL_APP_PASSWORD": secret("gmail.app_password", ""),
+    }
+    sources = sources_depuis_env(env)
+    if not sources:
+        st.warning("Aucune source configurée : ajoute la section `[veille]` ou `[gmail]` des secrets.")
+        return
+    with st.spinner("Recherche des offres… (1 à 2 minutes)"):
+        bilan = executer(sources, OffresSheet(get_classeur()), df, cle_ia=secret("veille.gemini_api_key", ""))
+    offres_du_sheet.clear()
+    erreurs = f" Sources en erreur : {', '.join(bilan.erreurs)}." if bilan.erreurs else ""
+    st.session_state.flash = (f"{bilan.collectees} offres lues, {bilan.fraiches} récentes et pertinentes, "
+                              f"{len(bilan.nouvelles)} nouvelles.{erreurs}")
+    st.rerun()
+
+
+def offres_demo() -> pd.DataFrame:
+    from veille import Offre, evaluer
+    from veille_run import OffresMemoire
+
+    jour = date.today()
+    exemples = [
+        Offre(source="Adzuna", titre="Stage Data Analyst Power BI H/F", entreprise="Nordis Conseil", lieu="Lille (59)",
+              url="https://example.com/1", date_publication=jour,
+              description="Stage de 6 mois dès janvier 2027 : tableaux de bord Power BI, SQL, Python, KPI."),
+        Offre(source="Indeed", titre="Stage Chargé d'études statistiques", entreprise="Institut Panel",
+              lieu="Paris (75)", url="https://example.com/2", date_publication=jour - timedelta(days=2),
+              description="Stage fin d'études, R, SAS, enquêtes, séries temporelles. Anglais courant."),
+        Offre(source="HelloWork", titre="Stage Data Scientist", entreprise="Safran", lieu="Toulouse",
+              url="https://example.com/3", date_publication=jour - timedelta(days=5),
+              description="Stage 6 mois, Python, machine learning, Databricks, Spark, Azure."),
+    ]
+    feuille = OffresMemoire()
+    feuille.ajouter([evaluer(o, jour) for o in exemples], jour)
+    return pd.DataFrame(feuille.lignes())
+
+
+def page_offres():
+    from veille import lanceur_depuis_ligne
+    from veille_run import ENTETES as ENTETES_OFFRES
+
+    col_statut = ENTETES_OFFRES.index("Statut") + 1
+
+    st.title("Offres du jour")
+    st.caption("Offres de stage publiées depuis moins de 7 jours, triées par chances de passer le premier tri "
+               "(score sur 100). Mise à jour chaque matin ; tu peux aussi lancer une recherche maintenant.")
+    try:
+        offres = offres_demo() if MODE_DEMO else offres_du_sheet()
+    except Exception as e:
+        st.error(f"Lecture de l'onglet Offres impossible : {e}")
+        return
+    haut = st.columns([3, 1])
+    if haut[1].button("Chercher maintenant", use_container_width=True, disabled=MODE_DEMO):
+        lancer_veille_ici()
+    if offres.empty:
+        st.info("Aucune offre pour l'instant : la première recherche crée l'onglet « Offres » du Google Sheet.")
+        return
+
+    offres["Score"] = pd.to_numeric(offres["Score"], errors="coerce").fillna(0).astype(int)
+    offres["Publiee"] = pd.to_datetime(offres["Publiee_le"], errors="coerce")
+    offres["Age"] = (pd.Timestamp(date.today()) - offres["Publiee"]).dt.days
+    offres["_row"] = range(2, len(offres) + 2)
+
+    f1, f2, f3, f4 = st.columns([1.2, 1, 1, 1.4])
+    statuts = f1.multiselect("Statut", ["Nouvelle", "Vue", "Postulé", "Écartée"], ["Nouvelle", "Vue"])
+    score_min = f2.slider("Score minimum", 0, 95, 50, 5)
+    age_max = f3.slider("Publiée depuis (jours)", 0, 7, 7)
+    sources = f4.multiselect("Source", sorted(offres["Source"].unique()), placeholder="Toutes")
+    vue = offres[offres["Statut"].isin(statuts) & (offres["Score"] >= score_min)]
+    vue = vue[(vue["Age"].isna()) | (vue["Age"] <= age_max)]
+    if sources:
+        vue = vue[vue["Source"].isin(sources)]
+    vue = vue.sort_values(["Score", "Publiee"], ascending=[False, False])
+    haut[0].markdown(f"**{len(vue)} offre(s)** · {int((offres['Statut'] == 'Nouvelle').sum())} nouvelle(s) au total")
+
+    for _, o in vue.head(40).iterrows():
+        age = "date non vérifiée" if pd.isna(o["Age"]) else ("aujourd'hui" if o["Age"] == 0 else f"il y a {int(o['Age'])} j")
+        with st.container(border=True):
+            g, d = st.columns([4, 1.3])
+            g.markdown(f"**{o['Score']}** · [{o['Titre']}]({o['Lien']})  \n"
+                       f"{o['Entreprise']} · {o['Lieu']} · {o['Source']} · {age}")
+            if o.get("Points_forts"):
+                g.caption("✔ " + str(o["Points_forts"]).replace(" · ", " · ✔ "))
+            if o.get("Points_faibles"):
+                g.caption("✖ " + str(o["Points_faibles"]).replace(" · ", " · ✖ "))
+            if o.get("Avis_IA"):
+                g.caption(f"Avis IA : {o['Avis_IA']}")
+            nom, contenu = lanceur_depuis_ligne(o.to_dict())
+            d.download_button("Lanceur CV", contenu, file_name=nom, mime="text/x-python",
+                              key=f"cv_{o['Cle']}", use_container_width=True)
+            b1, b2 = d.columns(2)
+            if b1.button("Postulé", key=f"ok_{o['Cle']}", use_container_width=True):
+                try:
+                    store.ajouter({
+                        "Date": date.today().isoformat(), "Entreprise": o["Entreprise"], "Ville": o["Lieu"],
+                        "Poste": o["Titre"], "Lien_Offre": o["Lien"], "Statut": "Candidature envoyée",
+                        "Date_Relance": (date.today() + timedelta(days=7)).isoformat(),
+                        "Commentaires": f"Trouvée par la veille ({o['Source']}, score {o['Score']})",
+                        "Nb_Relances": 0,
+                    })
+                    if not MODE_DEMO:
+                        get_classeur().worksheet("Offres").update_cell(int(o["_row"]), col_statut, "Postulé")
+                    offres_du_sheet.clear()
+                    st.session_state.flash = f"Candidature chez {o['Entreprise']} ajoutée."
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Échec de l'enregistrement : {e}")
+            if b2.button("Écarter", key=f"no_{o['Cle']}", use_container_width=True) and not MODE_DEMO:
+                get_classeur().worksheet("Offres").update_cell(int(o["_row"]), col_statut, "Écartée")
+                offres_du_sheet.clear()
+                st.rerun()
+    st.caption("Score : 70 et plus = fortes chances, 50 à 69 = moyennes. "
+               "Le bouton « Lanceur CV » télécharge le fichier à exécuter pour générer le CV adapté à l'offre.")
+
+
 if page == "Tableau de bord":
     page_tableau_de_bord()
+elif page == "Offres du jour":
+    page_offres()
 elif page.startswith("Relances"):
     page_relances()
 elif page == "Analyse des refus":

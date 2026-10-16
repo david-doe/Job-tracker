@@ -11,6 +11,7 @@ refus, tests, entretiens, propositions) mettent à jour automatiquement les cand
 - **Relances** : une carte par relance due, message modifiable, envoi en un clic ou via Gmail pré-rempli,
   report de 3 jours, clôture conseillée après 2 relances sans réponse. Chaque envoi met à jour le Sheet
   (nombre de relances, prochaine date, historique dans les notes).
+- **Offres du jour** : veille quotidienne des offres de stage (voir plus bas).
 - **Candidatures** : ajout et mise à jour, avec les coordonnées du contact.
 
 ## Lecture des réponses Gmail
@@ -62,6 +63,50 @@ La page **Analyse des refus** sert à trouver ce qui bloque et à corriger les p
 Le type de contrat, le métier et la zone sont déduits du poste et de la ville. `Canal`, `Date_Reponse` et `Motif_Refus`
 sont remplis par la lecture Gmail. Un constat ne s'affiche que sur un groupe d'au moins 5 candidatures.
 La date du nouveau CV se règle dans `analyse.py` (`DATE_NOUVEAU_CV`).
+
+## Veille des offres
+
+Chaque matin, la page **Offres du jour** et un mail récapitulatif proposent les offres de stage data les plus
+récentes, triées par chances de passer le premier tri.
+
+**Sources**
+- API France Travail et API Adzuna (gratuites, date de publication fournie par la source) ;
+- alertes reçues dans Gmail, gardées seulement si la date de publication est vérifiable : Indeed (âge écrit dans
+  l'alerte), LinkedIn (date de début de la recherche dans les liens), HelloWork (date lue sur la page de l'offre),
+  sites carrière des entreprises (alerte envoyée à la publication). Les autres alertes, qui renvoient souvent
+  d'anciennes offres, sont ignorées.
+
+**Tri**
+- seules les offres de stage data publiées depuis 7 jours au plus sont gardées ; les doublons entre sources sont
+  fusionnés et les offres déjà présentes dans Candidatures sont écartées ;
+- score sur 100 : intitulé proche du profil, compétences demandées et prouvées par le CV, outils exigés absents du CV,
+  fraîcheur (moins de 2 jours = bonus), lieu (Lille, Paris, télétravail), taille de l'entreprise, début et durée du
+  stage, langues exigées ;
+- facultatif : avec une clé Gemini, les 15 meilleures offres sont relues par l'IA (± 15 points et un avis en une phrase).
+
+**Pour chaque offre** : lien, points forts et faibles, et un bouton « Lanceur CV » qui télécharge le fichier
+`cv_offre_<Entreprise>.py` (titre, entreprise, domaine et mots-clés déjà remplis) à exécuter à côté de `cv_final.py`.
+Le bouton « Postulé » crée la candidature avec une relance à J+7.
+
+**Mise en route**
+1. Clés gratuites : France Travail (francetravail.io → créer une application avec l'API « Offres d'emploi v2 »)
+   et Adzuna (developer.adzuna.com). Clé Gemini facultative (aistudio.google.com).
+2. Secrets du dépôt (*Settings → Secrets and variables → Actions*) : `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`,
+   `GCP_SERVICE_ACCOUNT`, `FT_CLIENT_ID`, `FT_CLIENT_SECRET`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`,
+   et en option `GEMINI_API_KEY`.
+3. Pour le bouton « Chercher maintenant » de l'app, ajouter dans les secrets Streamlit :
+
+```toml
+[veille]
+ft_client_id = "..."
+ft_client_secret = "..."
+adzuna_app_id = "..."
+adzuna_app_key = "..."
+gemini_api_key = ""   # facultatif
+```
+
+Le workflow `.github/workflows/veille.yml` tourne chaque matin vers 7 h 20 et peut être lancé à la main
+(*Actions → Veille des offres → Run workflow*). Ses journaux ne contiennent que des compteurs.
 
 ## Règles de relance
 

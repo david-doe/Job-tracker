@@ -132,7 +132,9 @@ def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
         consigne = (
             f"Profil du candidat : {PROFIL_IA}\n\nOffre : {o.titre} chez {o.entreprise} ({o.lieu}).\n"
             f"{o.description[:6000]}\n\nÉvalue ses chances d'être retenu au premier tri pour cette offre. "
-            'Réponds uniquement en JSON : {"ajustement": entier entre -15 et 15, '
+            "Sois exigeant : un recruteur reçoit des centaines de candidatures. Si l'annonce est trop courte "
+            "pour juger, réponds 0. "
+            'Réponds uniquement en JSON : {"ajustement": entier entre -15 et 8, '
             '"avis": "une phrase en français, sans formule"}'
         )
         for modele in list(modeles):
@@ -146,7 +148,7 @@ def relire_avec_ia(offres: list[Offre], cle_api: str, nombre: int = 15) -> int:
                 r.raise_for_status()
                 texte = r.json()["candidates"][0]["content"]["parts"][0]["text"]
                 avis = json.loads(texte)
-                ajustement = max(-15, min(15, int(avis.get("ajustement", 0))))
+                ajustement = max(-15, min(8, int(avis.get("ajustement", 0))))
                 o.score = max(5, min(95, o.score + ajustement))
                 o.avis_ia = str(avis.get("avis", ""))[:300]
                 relues += 1

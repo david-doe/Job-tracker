@@ -316,3 +316,10 @@ def test_postule_approche_et_type():
     assert choisir_type(t) == "conseil"
     g = Offre(source="Adzuna", titre="Stage de fin d'études - Data H/F", entreprise="X", lieu="Paris", url="u")
     assert choisir_type(g) == "generique"
+
+
+def test_casse_titre_et_entreprise():
+    from veille import entreprise_cv, titre_cv
+    assert titre_cv("Stage - Data Analyst Power Bi & Dax H/F") == "Stage Data Analyst Power BI & DAX"
+    assert titre_cv("STAGE – DATA ANALYST POWER BI & DAX H/F") == "Stage Data Analyst Power BI & DAX"
+    assert entreprise_cv("EMOTORS") == "Emotors" and entreprise_cv("CMA CGM") == "CMA CGM"

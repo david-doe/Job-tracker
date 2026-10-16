@@ -405,14 +405,51 @@ def choisir_mots_cles(offre: Offre, type_cv: str, max_car: int = 60) -> str:
     return " · ".join(choix)
 
 
+SIGLES = {"bi": "BI", "dax": "DAX", "sql": "SQL", "kpi": "KPI", "kpis": "KPI", "ia": "IA", "ai": "AI", "ml": "ML",
+          "etl": "ETL", "crm": "CRM", "erp": "ERP", "rh": "RH", "it": "IT", "si": "SI", "vba": "VBA", "sas": "SAS",
+          "r&d": "R&D", "nlp": "NLP", "llm": "LLM", "api": "API", "gcp": "GCP", "aws": "AWS", "sap": "SAP",
+          "plm": "PLM", "gsi": "GSI", "rse": "RSE", "b2b": "B2B", "b2c": "B2C", "pme": "PME", "s&op": "S&OP",
+          "powerbi": "Power BI", "python": "Python", "excel": "Excel", "tableau": "Tableau", "qlik": "Qlik",
+          "data": "Data", "analyst": "Analyst", "analyste": "Analyste", "scientist": "Scientist",
+          "engineer": "Engineer", "science": "Science"}
+
+
+def _casse(t: str) -> str:
+    """Casse propre : « STAGE - DATA ANALYST POWER BI » → « Stage - data analyst Power BI »."""
+    lettres = [c for c in t if c.isalpha()]
+    if lettres and sum(c.isupper() for c in lettres) / len(lettres) > 0.6:
+        t = t.lower()
+    def mot(m):
+        w = m.group(0)
+        cle = w.lower()
+        if cle in SIGLES:
+            return SIGLES[cle]
+        return w
+    t = re.sub(r"[A-Za-zÀ-ÿ&]+", mot, t)
+    t = re.sub(r"(?i)\bpower bi\b", "Power BI", t)
+    return t
+
+
+def entreprise_cv(nom: str) -> str:
+    """« EMOTORS » → « Emotors » ; les sigles courts (SNCF, CMA CGM) restent en capitales."""
+    def mot(m):
+        w = m.group(0)
+        return w.capitalize() if w.isupper() and len(w) >= 6 else w
+    return re.sub(r"[A-Za-zÀ-ÿ]+", mot, (nom or "").strip())
+
+
 def titre_cv(titre: str) -> str:
     t = re.sub(r"\s*[\(\[]?\b(H/F|F/H|H/F/X|F/H/X|M/F|F/M|X/F/H)\b[\)\]]?", "", titre, flags=re.I)
     t = re.sub(r"\s*[-–|]\s*(r[ée]f\.?|ref)\s*[\w-]+$", "", t, flags=re.I)
+    t = re.sub(r"(?i)\s*[\(\[]\s*(stage|stagiaire|internship)[^\)\]]*[\)\]]", "", t)
+    t = re.sub(r"(?i)\s*[-–|]\s*(stage|stagiaire)\s*$", "", t)
+    t = re.sub(r"(?i)\bbac\s*\+?\s*\d(\s*/\s*\d)?\s*[-–]?\s*", "", t)
     t = re.sub(r"\s+", " ", t).strip(" -–|")
     if not re.match(r"(?i)stage|stagiaire|internship", t):
         t = "Stage " + t[0].lower() + t[1:] if t else "Stage"
     t = re.sub(r"(?i)^stage\s*[-–:]\s*", "Stage ", t)
     t = re.sub(r"(?i)^stagiaire\s*[-–:]?\s*", "Stage ", t)
+    t = _casse(t)
     return t[:1].upper() + t[1:]
 
 
@@ -443,7 +480,7 @@ runpy.run_path(_moteur, run_name="__main__", init_globals=dict(
 def lanceur(offre: Offre) -> tuple[str, str]:
     """(nom de fichier, contenu) du lanceur de CV pour cette offre."""
     type_cv = choisir_type(offre)
-    entreprise = (offre.entreprise or "vos équipes").strip()
+    entreprise = entreprise_cv(offre.entreprise) or "vos équipes"
     contenu = MODELE_LANCEUR.format(titre=titre_cv(offre.titre), entreprise=entreprise, type_cv=type_cv,
                                     mots_cles=choisir_mots_cles(offre, type_cv))
     slug = re.sub(r"[^A-Za-z0-9]+", "_", norm(entreprise).title()).strip("_") or "Offre"

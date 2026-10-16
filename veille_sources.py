@@ -109,14 +109,25 @@ class Adzuna:
         self.http = session or requests.Session()
 
     def offres(self, jours: int = 7) -> list[Offre]:
-        resultats = []
+        resultats, derniere_erreur, reussies = [], None, 0
         for requete in REQUETES:
             for page in (1, 2):
-                r = self.http.get(self.URL.format(page=page), timeout=30, params={
-                    "app_id": self.app_id, "app_key": self.app_key, "results_per_page": 50,
-                    "what": requete, "max_days_old": jours, "sort_by": "date",
-                    "content-type": "application/json"})
-                r.raise_for_status()
+                params = {"app_id": self.app_id, "app_key": self.app_key, "results_per_page": 50,
+                          "what": requete, "max_days_old": jours, "sort_by": "date",
+                          "content-type": "application/json"}
+                for essai in range(3):                 # l'API renvoie parfois 503 : on réessaie
+                    r = self.http.get(self.URL.format(page=page), timeout=30, params=params)
+                    if r.status_code not in (429, 500, 502, 503, 504):
+                        break
+                    time.sleep(3 * (essai + 1))
+                try:
+                    r.raise_for_status()
+                except Exception as e:
+                    if getattr(getattr(e, "response", None), "status_code", 0) in (401, 403):
+                        raise                          # clé refusée : inutile d'insister
+                    derniere_erreur = e
+                    break
+                reussies += 1
                 lignes = r.json().get("results", [])
                 for o in lignes:
                     resultats.append(Offre(
@@ -130,6 +141,8 @@ class Adzuna:
                 if len(lignes) < 50:
                     break
                 time.sleep(0.3)
+        if not reussies and derniere_erreur is not None:
+            raise derniere_erreur
         return resultats
 
 

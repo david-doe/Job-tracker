@@ -83,6 +83,11 @@ class OffresMemoire(OffresSheet):
     def ajouter(self, offres, aujourd_hui):
         self._lignes += [dict(zip(ENTETES, ligne(o, aujourd_hui))) for o in offres]
 
+    def oublier_nouvelles(self):
+        avant = len(self._lignes)
+        self._lignes = [l for l in self._lignes if l.get("Statut") != "Nouvelle"]
+        return avant - len(self._lignes)
+
     def statut(self, cle, statut):
         for l in self._lignes:
             if l["Cle"] == cle:
@@ -241,7 +246,7 @@ class Bilan:
 
 
 def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None = None,
-             cle_ia: str = "") -> Bilan:
+             cle_ia: str = "", renoter: bool = False) -> Bilan:
     aujourd_hui = aujourd_hui or date.today()
     bilan = Bilan()
     toutes: list[Offre] = []
@@ -265,6 +270,8 @@ def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None 
             gardees.append(o)
     bilan.fraiches = len(gardees)
 
+    if renoter and gardees:                         # jamais si la collecte a échoué
+        print(f"Offres non traitées retirées pour être renotées : {offres_sheet.oublier_nouvelles()}")
     connues = offres_sheet.cles()
     nouvelles = [o for o in gardees if o.cle not in connues]
     if cle_ia:
@@ -353,9 +360,7 @@ def main() -> int:
         classeur = gspread.authorize(creds).open(env.get("SHEET_NAME") or "Job_Tracker_Data")
         candidatures = SheetStore(classeur.worksheet("Candidatures")).charger()
         feuille = OffresSheet(classeur)
-        if env.get("VEILLE_RENOTER") == "true":
-            print(f"Offres non traitées retirées pour être renotées : {feuille.oublier_nouvelles()}")
-        bilan = executer(sources, feuille, candidatures, cle_ia=env.get("GEMINI_API_KEY", ""))
+        bilan = executer(sources, feuille, candidatures, renoter=env.get("VEILLE_RENOTER") == "true", cle_ia=env.get("GEMINI_API_KEY", ""))
     except Exception as e:                          # message générique : les journaux sont publics
         print(f"Échec de la veille ({type(e).__name__}).")
         return 1

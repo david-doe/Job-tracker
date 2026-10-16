@@ -323,3 +323,19 @@ def test_casse_titre_et_entreprise():
     assert titre_cv("Stage - Data Analyst Power Bi & Dax H/F") == "Stage Data Analyst Power BI & DAX"
     assert titre_cv("STAGE – DATA ANALYST POWER BI & DAX H/F") == "Stage Data Analyst Power BI & DAX"
     assert entreprise_cv("EMOTORS") == "Emotors" and entreprise_cv("CMA CGM") == "CMA CGM"
+
+
+def test_alertes_wttj_et_apec():
+    from datetime import date
+    from veille_sources import lire_apec, lire_wttj
+    page = ('<a href="https://www.welcometothejungle.com/fr/companies/qonto/jobs/stage-data-analyst_paris">'
+            'Stage Data Analyst</a><p>Qonto</p><p>Paris</p><a href="https://www.welcometothejungle.com/fr/'
+            'companies/qonto/jobs/stage-data-analyst_paris">Voir l\'offre</a>')
+    o = lire_wttj(page, date(2026, 10, 16), lambda u: date(2026, 10, 15))
+    assert len(o) == 1 and o[0].titre == "Stage Data Analyst" and o[0].entreprise == "Qonto"
+    assert o[0].lieu == "Paris" and o[0].date_publication == date(2026, 10, 15)
+    page = ('<a href="https://www.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/176543210W?x=1">'
+            'Stagiaire Data Analyst H/F</a><span>ACME</span><span>Lille - 59</span>')
+    a = lire_apec(page, "", date(2026, 10, 16), lambda n: date(2026, 10, 14))
+    assert len(a) == 1 and a[0].id_source == "176543210W" and a[0].entreprise == "ACME"
+    assert a[0].date_publication == date(2026, 10, 14)

@@ -150,7 +150,8 @@ class Adzuna:
 # Alertes Gmail
 # ---------------------------------------------------------------------------
 EXPEDITEURS_ALERTES = ["jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com", "jobalert.indeed.com",
-                       "alerte@emails.hellowork.com", "notification@emails.hellowork.com", "jobs2web.com"]
+                       "alerte@emails.hellowork.com", "notification@emails.hellowork.com", "jobs2web.com",
+                       "welcometothejungle.com", "apec.fr"]
 
 
 def _decoder(valeur) -> str:
@@ -275,6 +276,10 @@ def lire_alerte(message, verifier_page=None) -> list[Offre]:
         return lire_indeed(texte, recu)
     if "hellowork.com" in adresse:
         return lire_hellowork(page, recu, verifier_page)
+    if "welcometothejungle.com" in adresse:
+        return lire_wttj(page, recu, verifier_page and date_page_generique, verifier_page and resoudre_lien)
+    if "apec.fr" in adresse:
+        return lire_apec(page, texte, recu, verifier_page and date_apec)
     if "jobs2web.com" in adresse:
         return lire_site_carriere(page, texte, nom_expediteur or adresse_brute, recu)
     return []
@@ -388,6 +393,104 @@ def date_page_hellowork(url: str, session=None) -> date | None:
         return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
     m = re.search(r'"datePosted"\s*:\s*"([^"]+)"', r.text)
     return date_iso(m.group(1)) if m else None
+
+
+# --- Welcome to the Jungle -------------------------------------------------
+MOTIF_WTTJ = re.compile(r"welcometothejungle\.com/(?:fr|en)/companies/([\w-]+)/jobs/([\w-]+)")
+BOUTONS = re.compile(r"^(voir|postuler|decouvrir|en savoir|modifier|gerer|se desabonner|consulter|j.?y vais)", re.I)
+
+
+def _entreprise_slug(slug: str) -> str:
+    return " ".join(m.capitalize() for m in slug.replace("_", "-").split("-") if m)
+
+
+def lire_wttj(page: str, recu: date, verifier_page=None, resoudre=None) -> list[Offre]:
+    """Alerte WTTJ : titre de l'offre en lien, entreprise et lieu dans les lignes suivantes."""
+    items = html_en_lignes(page)
+    offres, vus = [], set()
+    for i, (txt, lien) in enumerate(items):
+        if not txt or not lien or BOUTONS.search(norm(txt)) or len(txt) < 6:
+            continue
+        reel = url_cachee(lien)
+        m = MOTIF_WTTJ.search(reel)
+        if not m and resoudre and "welcometothejungle" in lien:
+            reel = resoudre(lien) or reel
+            m = MOTIF_WTTJ.search(reel)
+        if not m or m.group(2) in vus:
+            continue
+        vus.add(m.group(2))
+        suite = [t for t, _ in items[i + 1:i + 8] if t and not BOUTONS.search(norm(t))]
+        url = f"https://www.welcometothejungle.com/fr/companies/{m.group(1)}/jobs/{m.group(2)}"
+        offres.append(Offre(source="Welcome to the Jungle", id_source=m.group(2), titre=txt,
+                            entreprise=_entreprise_slug(m.group(1)), lieu=suite[1] if len(suite) > 1 else "",
+                            url=url, description=" ".join(suite[:4]),
+                            date_publication=verifier_page(url) if verifier_page else None))
+    return offres
+
+
+# --- APEC ------------------------------------------------------------------
+MOTIF_APEC = re.compile(r"apec\.fr/[^\s\"'<>]*?detail-offre/(\d{6,}[A-Z]?)", re.I)
+
+
+def lire_apec(page: str, texte: str, recu: date, verifier_page=None) -> list[Offre]:
+    items = html_en_lignes(page)
+    offres, vus = [], set()
+    for i, (txt, lien) in enumerate(items):
+        if not txt or not lien or BOUTONS.search(norm(txt)) or len(txt) < 6:
+            continue
+        m = MOTIF_APEC.search(url_cachee(lien)) or MOTIF_APEC.search(unquote(lien))
+        if not m or m.group(1) in vus:
+            continue
+        vus.add(m.group(1))
+        suite = [t for t, _ in items[i + 1:i + 8] if t and not BOUTONS.search(norm(t))]
+        url = f"https://www.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/{m.group(1)}"
+        offres.append(Offre(source="APEC", id_source=m.group(1), titre=txt,
+                            entreprise=suite[0] if suite else "", lieu=suite[1] if len(suite) > 1 else "",
+                            url=url, description=" ".join(suite[:4]),
+                            date_publication=verifier_page(m.group(1)) if verifier_page else None))
+    return offres
+
+
+def resoudre_lien(url: str, session=None) -> str | None:
+    """Adresse finale d'un lien de suivi (suit les redirections sans charger la page)."""
+    import requests
+    http = session or requests
+    try:
+        return http.head(url, headers=UA, timeout=15, allow_redirects=True).url
+    except Exception:
+        return None
+
+
+def date_page_generique(url: str, session=None) -> date | None:
+    """Date de publication lue sur la page de l'offre (balise JobPosting « datePosted »)."""
+    import requests
+    http = session or requests
+    try:
+        r = http.get(url, headers=UA, timeout=20)
+    except Exception:
+        return None
+    if r.status_code != 200:
+        return None
+    m = re.search(r'"datePosted"\s*:\s*"([^"]+)"', r.text) or re.search(r'"published_at"\s*:\s*"([^"]+)"', r.text)
+    return date_iso(m.group(1)) if m else None
+
+
+def date_apec(numero: str, session=None) -> date | None:
+    """Date de publication via le service public d'APEC (None si l'offre n'existe plus)."""
+    import requests
+    http = session or requests
+    try:
+        r = http.get("https://www.apec.fr/cms/webservices/offre/public", params={"numeroOffre": numero},
+                     headers=UA, timeout=20)
+        if r.status_code != 200:
+            return None
+        donnees = r.json()
+    except Exception:
+        return None
+    for cle in ("datePublication", "dateValidation", "datePremierePublication"):
+        if donnees.get(cle):
+            return date_iso(str(donnees[cle]))
+    return None
 
 
 # --- Sites carrière (jobs2web / SuccessFactors) -----------------------------

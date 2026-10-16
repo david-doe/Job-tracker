@@ -13,8 +13,8 @@ import sys
 
 
 def main() -> int:
-    adresse = os.environ.get("GMAIL_ADDRESS", "")
-    mot_de_passe = os.environ.get("GMAIL_APP_PASSWORD", "")
+    from veille_run import identifiants_gmail
+    adresse, mot_de_passe = identifiants_gmail(os.environ)
     compte = os.environ.get("GCP_SERVICE_ACCOUNT", "")
     if not (adresse and mot_de_passe and compte):
         print("Secrets absents : synchronisation non configurée, rien à faire.")

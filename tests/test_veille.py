@@ -292,3 +292,11 @@ def test_compte_service_formats():
     import pytest
     with pytest.raises(ValueError):
         lire_compte_service("n'importe quoi")
+
+
+def test_identifiants_gmail_robustes():
+    from veille_run import identifiants_gmail
+    ok = ("moi@gmail.com", "abcdefghijklmnop")
+    assert identifiants_gmail({"GMAIL_ADDRESS": "moi@gmail.com", "GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop"}) == ok
+    assert identifiants_gmail({"GMAIL_ADDRESS": "abcd efgh ijkl mnop", "GMAIL_APP_PASSWORD": "moi@gmail.com"}) == ok
+    assert identifiants_gmail({"GMAIL_ADDRESS": "David <moi@gmail.com>\n", "GMAIL_APP_PASSWORD": " abcdefghijklmnop "}) == ok

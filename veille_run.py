@@ -190,7 +190,13 @@ def resume_erreur(e: Exception) -> str:
     reponse = getattr(e, "response", None)
     if reponse is not None and getattr(reponse, "status_code", None):
         etape = "jeton" if "oauth2" in str(getattr(reponse, "url", "")) else "recherche"
-        return f"{type(e).__name__} {reponse.status_code} {etape}"
+        code = ""
+        try:
+            corps = reponse.json()
+            code = " " + re.sub(r"[^\w ]", "", str(corps.get("error") or corps.get("message") or ""))[:40]
+        except Exception:
+            pass
+        return f"{type(e).__name__} {reponse.status_code} {etape}{code}".rstrip()
     message = re.sub(r"\S+@\S+", "", str(e))[:80].strip(" b'\"")
     return f"{type(e).__name__}: {message}" if message else type(e).__name__
 
@@ -240,16 +246,27 @@ def executer(sources, offres_sheet, candidatures=None, aujourd_hui: date | None 
     return bilan
 
 
+def identifiants_gmail(env=os.environ) -> tuple[str, str]:
+    """(adresse, mot de passe d'application), même si les deux secrets ont été intervertis ou mal copiés."""
+    a, m = env.get("GMAIL_ADDRESS", ""), env.get("GMAIL_APP_PASSWORD", "")
+    motif = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
+    trouve_a, trouve_m = re.search(motif, a), re.search(motif, m)
+    if not trouve_a and trouve_m:
+        a, m, trouve_a = m, a, trouve_m
+    adresse = trouve_a.group(0) if trouve_a else a.strip()
+    return adresse, re.sub(r"\s", "", m)
+
+
 def sources_depuis_env(env=os.environ) -> list:
     from veille_sources import Adzuna, AlertesGmail, FranceTravail, date_page_hellowork
 
     sources = []
     if env.get("FT_CLIENT_ID") and env.get("FT_CLIENT_SECRET"):
-        sources.append(FranceTravail(env["FT_CLIENT_ID"], env["FT_CLIENT_SECRET"]))
+        sources.append(FranceTravail(env["FT_CLIENT_ID"].strip(), env["FT_CLIENT_SECRET"].strip()))
     if env.get("ADZUNA_APP_ID") and env.get("ADZUNA_APP_KEY"):
-        sources.append(Adzuna(env["ADZUNA_APP_ID"], env["ADZUNA_APP_KEY"]))
+        sources.append(Adzuna(env["ADZUNA_APP_ID"].strip(), env["ADZUNA_APP_KEY"].strip()))
     if env.get("GMAIL_ADDRESS") and env.get("GMAIL_APP_PASSWORD"):
-        sources.append(AlertesGmail(env["GMAIL_ADDRESS"], env["GMAIL_APP_PASSWORD"], date_page_hellowork))
+        sources.append(AlertesGmail(*identifiants_gmail(env), date_page_hellowork))
     return sources
 
 
@@ -321,8 +338,8 @@ def main() -> int:
         stats = {"collectees": bilan.collectees, "fraiches": bilan.fraiches, "nouvelles": len(bilan.nouvelles)}
         objet, texte, corps = mail_html(a_envoyer, stats, date.today())
         try:
-            envoyer_mail(env["GMAIL_ADDRESS"], env["GMAIL_APP_PASSWORD"],
-                         env.get("VEILLE_MAIL_A") or env["GMAIL_ADDRESS"], objet, texte, corps)
+            adresse, mdp = identifiants_gmail(env)
+            envoyer_mail(adresse, mdp, env.get("VEILLE_MAIL_A") or adresse, objet, texte, corps)
             print(f"Mail envoyé ({len(a_envoyer[:NB_MAIL])} offres).")
         except Exception as e:
             print(f"Mail non envoyé ({resume_erreur(e)}).")

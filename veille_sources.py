@@ -55,9 +55,15 @@ class FranceTravail:
         self.http = session or requests.Session()
 
     def _token(self) -> str:
-        r = self.http.post(self.URL_TOKEN, timeout=30, data={
-            "grant_type": "client_credentials", "client_id": self.client_id,
-            "client_secret": self.client_secret, "scope": "api_offresdemploiv2 o2dsoffre"})
+        def demander(ident, secret):
+            return self.http.post(self.URL_TOKEN, timeout=30, data={
+                "grant_type": "client_credentials", "client_id": ident,
+                "client_secret": secret, "scope": "api_offresdemploiv2 o2dsoffre"})
+        r = demander(self.client_id, self.client_secret)
+        if r.status_code in (400, 401):            # identifiant et clé secrète intervertis ?
+            r2 = demander(self.client_secret, self.client_id)
+            if r2.ok:
+                r = r2
         r.raise_for_status()
         return r.json()["access_token"]
 

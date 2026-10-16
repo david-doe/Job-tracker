@@ -275,3 +275,20 @@ def test_main_sans_configuration(monkeypatch, capsys):
         monkeypatch.delenv(v, raising=False)
     assert veille_run.main() == 0
     assert "rien à faire" in capsys.readouterr().out
+
+
+def test_compte_service_formats():
+    import base64
+    import json as _json
+    from veille_run import lire_compte_service
+    d = {"type": "service_account", "private_key": "-----BEGIN-----\nabc\n-----END-----\n", "client_email": "x@y"}
+    j = _json.dumps(d)
+    assert lire_compte_service(j) == d
+    assert lire_compte_service(base64.b64encode(j.encode()).decode()) == d
+    toml = '[gcp_service_account]\ntype = "service_account"\nprivate_key = "-----BEGIN-----\\nabc\\n-----END-----\\n"\nclient_email = "x@y"\n'
+    assert lire_compte_service(toml) == d
+    brut = '{"type": "service_account", "private_key": "-----BEGIN-----\nabc\n-----END-----\n", "client_email": "x@y"}'
+    assert lire_compte_service(brut) == d
+    import pytest
+    with pytest.raises(ValueError):
+        lire_compte_service("n'importe quoi")

@@ -24,11 +24,12 @@ def main() -> int:
     from oauth2client.service_account import ServiceAccountCredentials
 
     from store import SheetStore
+    from veille_run import lire_compte_service
     from sync_gmail import GmailImap, JournalSheet, synchroniser
 
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(compte), scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(lire_compte_service(compte), scope)
         classeur = gspread.authorize(creds).open(os.environ.get("SHEET_NAME") or "Job_Tracker_Data")
         rapport = synchroniser(
             SheetStore(classeur.worksheet("Candidatures")),

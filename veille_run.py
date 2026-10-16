@@ -242,6 +242,33 @@ def sources_depuis_env(env=os.environ) -> list:
     return sources
 
 
+def lire_compte_service(texte: str) -> dict:
+    """JSON du compte de service, accepté aussi au format TOML de Streamlit ou en base64."""
+    import base64
+    import tomllib
+
+    texte = texte.strip().strip("'").strip()
+    essais = [texte]
+    try:
+        essais.append(base64.b64decode(texte, validate=True).decode("utf-8"))
+    except Exception:
+        pass
+    for brut in essais:
+        try:
+            return json.loads(brut, strict=False)
+        except ValueError:
+            pass
+        try:
+            donnees = tomllib.loads(brut)
+        except Exception:
+            continue
+        if "private_key" not in donnees:
+            donnees = next((v for v in donnees.values() if isinstance(v, dict) and "private_key" in v), {})
+        if donnees:
+            return donnees
+    raise ValueError("format du compte de service non reconnu")
+
+
 def main() -> int:
     env = os.environ
     if not env.get("GCP_SERVICE_ACCOUNT"):
@@ -258,8 +285,13 @@ def main() -> int:
     from store import SheetStore
 
     try:
+        compte = lire_compte_service(env["GCP_SERVICE_ACCOUNT"])
+    except ValueError:
+        print("Secret GCP_SERVICE_ACCOUNT illisible : colle le contenu complet du fichier JSON du compte de service.")
+        return 1
+    try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(env["GCP_SERVICE_ACCOUNT"]), scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(compte, scope)
         classeur = gspread.authorize(creds).open(env.get("SHEET_NAME") or "Job_Tracker_Data")
         candidatures = SheetStore(classeur.worksheet("Candidatures")).charger()
         bilan = executer(sources, OffresSheet(classeur), candidatures, cle_ia=env.get("GEMINI_API_KEY", ""))

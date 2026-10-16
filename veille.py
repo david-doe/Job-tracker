@@ -526,7 +526,7 @@ def date_iso(valeur: str) -> date | None:
 
 def lanceur_depuis_ligne(ligne: dict) -> tuple[str, str]:
     """Lanceur de CV à partir d'une ligne de l'onglet « Offres » (titre, entreprise, type, mots-clés)."""
-    entreprise = (str(ligne.get("Entreprise", "")) or "vos équipes").strip()
+    entreprise = entreprise_cv(str(ligne.get("Entreprise", ""))) or "vos équipes"
     contenu = MODELE_LANCEUR.format(titre=titre_cv(str(ligne.get("Titre", ""))), entreprise=entreprise,
                                     type_cv=str(ligne.get("Type_CV", "")) or "auto",
                                     mots_cles=str(ligne.get("Mots_cles", "")))

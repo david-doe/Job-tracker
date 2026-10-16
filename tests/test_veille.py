@@ -339,3 +339,11 @@ def test_alertes_wttj_et_apec():
     a = lire_apec(page, "", date(2026, 10, 16), lambda n: date(2026, 10, 14))
     assert len(a) == 1 and a[0].id_source == "176543210W" and a[0].entreprise == "ACME"
     assert a[0].date_publication == date(2026, 10, 14)
+
+
+def test_lanceur_depuis_ligne_casse():
+    from veille import lanceur_depuis_ligne
+    nom, c = lanceur_depuis_ligne({"Titre": "Stage - Data Analyst Power Bi & Dax H/F", "Entreprise": "EMOTORS",
+                                   "Type_CV": "pilotage", "Mots_cles": "Power BI · DAX"})
+    assert "ENTREPRISE = 'Emotors'" in c and "TITRE = 'Stage Data Analyst Power BI & DAX'" in c
+    assert nom == "cv_offre_Emotors.py"
